@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Tab</title>
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+  <main class="page">
+    <form class="search" id="search" role="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input name="q" placeholder="Search" aria-label="Search" autocomplete="off" autofocus>
+      <kbd>/</kbd>
+    </form>
+
+    <section class="section" data-section="pins">
+      <header class="section-head">
+        <h2>Pinned</h2>
+        <button class="text-button" id="pin-access" hidden>Load previews</button>
+        <button class="icon-button" data-toggle-edit="pins" aria-label="Edit pinned" title="Edit"></button>
+      </header>
+      <div class="grid" id="pins"></div>
+      <form class="add-form" id="pin-form" hidden>
+        <input name="name" placeholder="Name" autocomplete="off">
+        <input name="url" placeholder="https://…" required autocomplete="off">
+        <button type="submit">Add</button>
+      </form>
+    </section>
+
+    <section class="section" data-section="recent">
+      <header class="section-head">
+        <h2>Recent</h2>
+      </header>
+      <div class="grid dismissible" id="recent"></div>
+    </section>
+
+    <section class="section" data-section="dev">
+      <header class="section-head">
+        <h2>Dev</h2>
+        <button class="icon-button" data-toggle-edit="dev" aria-label="Edit dev ports" title="Edit"></button>
+      </header>
+      <div class="card-grid" id="dev"></div>
+      <form class="add-form" id="dev-form" hidden>
+        <input name="port" type="number" min="1" max="65535" placeholder="Port" required>
+        <input name="label" placeholder="Label (optional)" autocomplete="off">
+        <button type="submit">Add</button>
+      </form>
+    </section>
+  </main>
+  <a class="credit" id="credit" target="_blank" rel="noopener" hidden></a>
+  <script src="newtab.js"></script>
+</body>
+</html>
