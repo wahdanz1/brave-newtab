@@ -11,10 +11,13 @@ const MEDIA_TIMEOUT_MS = 5000;
 const COVER_SIZE = { width: 640, height: 400 };
 const ICON_SIZE = 128;
 const MAX_HIDDEN_RECENT = 200;
+const WALLPAPER_MAX_WIDTH = 1600;
+const WALLPAPER_BLUR_PX = 6;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const ICONS = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5 3-3"/><path d="m2 22 3-3"/><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/><path d="M7.5 13.5 10 11"/><path d="M10.5 16.5 13 14"/><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"/></svg>',
   done: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
 };
 
@@ -62,6 +65,16 @@ function el(tag, props = {}, children = []) {
 function normaliseUrl(input) {
   const trimmed = input.trim();
   return /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+// Load events rather than img.decode(), which can stall while the tab is in the background.
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }
 
 function hostOf(url) {
@@ -134,9 +147,7 @@ async function resample(url, width, height, fit) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const blob = await response.blob();
   if (blob.type.includes("svg")) {
-    const img = new Image();
-    img.src = URL.createObjectURL(blob);
-    await img.decode();
+    const img = await loadImage(URL.createObjectURL(blob));
     const canvas = new OffscreenCanvas(width, height);
     canvas.getContext("2d").drawImage(img, 0, 0, width, height);
     URL.revokeObjectURL(img.src);
@@ -179,9 +190,7 @@ async function firstWorking(attempts) {
 
 // Weighted by saturation so monochrome icons give a neutral tint instead of a muddy average.
 async function tintFrom(src) {
-  const img = new Image();
-  img.src = src;
-  await img.decode();
+  const img = await loadImage(src);
   const canvas = new OffscreenCanvas(16, 16);
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, 16, 16);
@@ -249,19 +258,33 @@ async function fillCover(preview, url) {
   preview.append(img);
 }
 
-function pinCard({ url, label, shortcut, onRemove }) {
+function pinCard({ url, onRemove }) {
   const preview = el("div", { className: "preview" }, el("div", { className: "skeleton" }));
   const footer = el("div", { className: "card-footer" });
   if (hasExtensionApis) footer.append(el("img", { alt: "", src: faviconUrl(url, 32) }));
-  footer.append(el("span", { textContent: label }));
+  footer.append(el("span"));
   const card = el("a", { className: "preview-card", href: url, title: url }, [
     preview,
     footer,
-    el("kbd", { textContent: shortcut }),
+    el("kbd"),
     removeButton(onRemove),
   ]);
   fillCover(preview, url);
   return card;
+}
+
+// Blurred once on a canvas: a live CSS blur on a full-screen layer renders in vertical bands.
+function blurredWallpaper(img) {
+  const width = Math.min(WALLPAPER_MAX_WIDTH, img.naturalWidth);
+  const height = Math.round((width * img.naturalHeight) / img.naturalWidth);
+  const screenScale = Math.max(innerWidth / width, innerHeight / height);
+  const radius = WALLPAPER_BLUR_PX / screenScale;
+  const bleed = radius * 3;
+  const canvas = el("canvas", { width, height });
+  const ctx = canvas.getContext("2d");
+  ctx.filter = `blur(${radius}px)`;
+  ctx.drawImage(img, -bleed, -bleed, width + bleed * 2, height + bleed * 2);
+  return canvas;
 }
 
 async function renderBackground() {
@@ -270,10 +293,8 @@ async function renderBackground() {
     if (!response.ok) return;
     const { images } = await response.json();
     const photo = images[Math.floor(Math.random() * images.length)];
-    const img = new Image();
-    img.src = `backgrounds/${photo.source}`;
-    await img.decode();
-    document.documentElement.style.setProperty("--wallpaper", `url("${img.src}")`);
+    const img = await loadImage(`backgrounds/${photo.source}`);
+    document.querySelector(".backdrop").replaceChildren(blurredWallpaper(img));
     document.body.dataset.wallpaper = "";
     const credit = document.getElementById("credit");
     credit.href = photo.link;
@@ -282,27 +303,46 @@ async function renderBackground() {
   } catch {}
 }
 
+// Cards are reused across renders so their cover images don't reload and flash.
+const pinCards = new Map();
+
+async function removePin(url) {
+  const pins = (await store.get("pins")).filter((pin) => pin.url !== url);
+  await store.set("pins", pins);
+  if (hasExtensionApis) await chrome.storage.local.remove(`cover:${url}`);
+  renderPins();
+}
+
+async function movePin(fromUrl, toUrl) {
+  const pins = await store.get("pins");
+  const from = pins.findIndex((pin) => pin.url === fromUrl);
+  const to = pins.findIndex((pin) => pin.url === toUrl);
+  if (from < 0 || to < 0 || from === to) return;
+  const [moved] = pins.splice(from, 1);
+  pins.splice(to, 0, moved);
+  await store.set("pins", pins);
+  renderPins();
+}
+
 async function renderPins() {
   const pins = await store.get("pins");
   const root = document.getElementById("pins");
   root.classList.toggle("editing", editing.pins);
-  root.replaceChildren(
-    ...pins.map((pin, index) => {
-      const node = pinCard({
-        url: pin.url,
-        label: pin.name || hostOf(pin.url).replace(/^www\./, ""),
-        shortcut: String(index + 1),
-        onRemove: async () => {
-          pins.splice(index, 1);
-          await store.set("pins", pins);
-          if (hasExtensionApis) await chrome.storage.local.remove(`cover:${pin.url}`);
-          renderPins();
-        },
-      });
-      if (editing.pins) makeReorderable(node, index, pins);
-      return node;
-    }),
-  );
+  for (const url of pinCards.keys()) {
+    if (!pins.some((pin) => pin.url === url)) pinCards.delete(url);
+  }
+  root.replaceChildren(...pins.map((pin, index) => {
+    let card = pinCards.get(pin.url);
+    if (!card) {
+      card = pinCard({ url: pin.url, onRemove: () => removePin(pin.url) });
+      makeReorderable(card, pin.url);
+      pinCards.set(pin.url, card);
+    }
+    card.querySelector("kbd").textContent = String(index + 1);
+    card.querySelector(".card-footer span").textContent = pin.name || hostOf(pin.url).replace(/^www\./, "");
+    card.draggable = editing.pins;
+    return card;
+  }));
   if (!pins.length) root.append(el("p", { className: "empty", textContent: "Nothing pinned yet. Use the pencil to add up to five sites." }));
   document.getElementById("pin-form").hidden = !editing.pins || pins.length >= MAX_PINS;
   renderAccessPrompt(pins);
@@ -317,34 +357,32 @@ async function renderAccessPrompt(pins) {
   const button = document.getElementById("pin-access");
   button.hidden = !missing.size;
   button.onclick = async () => {
-    if (await chrome.permissions.request({ origins: [...missing] })) renderPins();
+    if (!(await chrome.permissions.request({ origins: [...missing] }))) return;
+    pinCards.clear();
+    renderPins();
   };
 }
 
-function makeReorderable(node, index, pins) {
-  node.draggable = true;
-  node.addEventListener("click", (event) => event.preventDefault());
+function makeReorderable(node, url) {
+  node.addEventListener("click", (event) => {
+    if (editing.pins) event.preventDefault();
+  });
   node.addEventListener("dragstart", (event) => {
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/x-pin-index", String(index));
+    event.dataTransfer.setData("text/x-pin-url", url);
     node.classList.add("dragging");
   });
   node.addEventListener("dragend", () => node.classList.remove("dragging"));
   node.addEventListener("dragover", (event) => {
-    if (!event.dataTransfer.types.includes("text/x-pin-index")) return;
+    if (!editing.pins || !event.dataTransfer.types.includes("text/x-pin-url")) return;
     event.preventDefault();
     node.classList.add("drop-target");
   });
   node.addEventListener("dragleave", () => node.classList.remove("drop-target"));
-  node.addEventListener("drop", async (event) => {
+  node.addEventListener("drop", (event) => {
     event.preventDefault();
     node.classList.remove("drop-target");
-    const from = Number(event.dataTransfer.getData("text/x-pin-index"));
-    if (from === index) return;
-    const [moved] = pins.splice(from, 1);
-    pins.splice(index, 0, moved);
-    await store.set("pins", pins);
-    renderPins();
+    movePin(event.dataTransfer.getData("text/x-pin-url"), url);
   });
 }
 
@@ -452,7 +490,11 @@ function showOffline(card) {
   const preview = card.querySelector(".preview");
   preview.querySelector("iframe")?.remove();
   delete preview.dataset.loaded;
-  if (!preview.querySelector(".preview-note")) preview.append(el("div", { className: "preview-note" }, el("span", { textContent: "Not running" })));
+  if (preview.querySelector(".preview-note")) return;
+  const note = el("div", { className: "preview-note", innerHTML: ICONS.offline, title: "Not running" });
+  note.setAttribute("role", "img");
+  note.setAttribute("aria-label", "Not running");
+  preview.append(note);
 }
 
 async function renderDev() {
@@ -486,7 +528,10 @@ document.querySelectorAll("[data-toggle-edit]").forEach((button) => {
     editing[key] = !editing[key];
     button.innerHTML = editing[key] ? ICONS.done : ICONS.edit;
     button.title = editing[key] ? "Done" : "Edit";
-    key === "pins" ? renderPins() : renderDev();
+    if (key === "pins") return renderPins();
+    // Toggled in place: re-rendering would reload every dev preview iframe.
+    document.getElementById("dev").classList.toggle("editing", editing.dev);
+    document.getElementById("dev-form").hidden = !editing.dev;
   });
 });
 
@@ -500,7 +545,7 @@ document.getElementById("pin-form").addEventListener("submit", async (event) => 
     ? chrome.permissions.request({ origins: [originPattern(pinUrl)] }).catch(() => false)
     : Promise.resolve(false);
   const pins = await store.get("pins");
-  if (pins.length >= MAX_PINS) return;
+  if (pins.length >= MAX_PINS || pins.some((pin) => pin.url === pinUrl)) return;
   await access;
   pins.push({ name: name.value.trim(), url: pinUrl });
   await store.set("pins", pins);

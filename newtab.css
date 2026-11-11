@@ -2,7 +2,12 @@
   --bg: #f6f6f4;
   --surface: #ffffff;
   --surface-hover: #efefec;
-  --border: #e2e2dd;
+  --border: color-mix(in srgb, var(--text) 16%, transparent);
+  --rim: 4px;
+  --rim-tint: color-mix(in srgb, var(--text) 7%, transparent);
+  --rim-tint-hover: color-mix(in srgb, var(--text) 7%, transparent);
+  --rim-blur: 10px;
+  --rim-blur-hover: 20px;
   --text: #1d1d1b;
   --muted: #76766f;
   --accent: #3b6fd8;
@@ -23,7 +28,6 @@
     --bg: #161716;
     --surface: #1f201f;
     --surface-hover: #2a2b2a;
-    --border: #2f302f;
     --text: #ececea;
     --muted: #8f8f89;
     --accent: #7ea2f0;
@@ -37,12 +41,16 @@
 
 .backdrop {
   position: fixed;
-  inset: -24px;
+  inset: 0;
   z-index: -1;
-  background: var(--wallpaper, none) center / cover no-repeat;
-  filter: blur(6px);
   opacity: 0;
   transition: opacity .4s;
+}
+.backdrop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .backdrop::after {
   content: "";
@@ -89,15 +97,20 @@ body {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  height: 52px;
-  background: var(--glass);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
+  height: 56px;
+  background:
+    linear-gradient(var(--glass), var(--glass)) padding-box,
+    linear-gradient(var(--rim-tint), var(--rim-tint)) border-box;
+  backdrop-filter: blur(var(--rim-blur));
+  border: var(--rim) solid transparent;
   border-radius: var(--radius);
   color: var(--muted);
-  transition: background-color var(--hover-transition), border-color var(--hover-transition);
 }
-.search:focus-within { background: var(--glass-hover); border-color: var(--accent); }
+.search:focus-within {
+  background:
+    linear-gradient(var(--glass-hover), var(--glass-hover)) padding-box,
+    linear-gradient(color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 45%, transparent)) border-box;
+}
 .search svg { flex: none; width: 20px; height: 20px; }
 .search input {
   flex: 1;
@@ -136,12 +149,12 @@ kbd {
 }
 .tile:hover kbd,
 .preview-card:hover kbd { opacity: 1; }
-.preview-card kbd { z-index: 1; background: var(--glass); backdrop-filter: blur(8px); }
+.preview-card kbd { z-index: 1; background: var(--glass-hover); border-color: transparent; color: var(--text); backdrop-filter: blur(8px); }
 .editing kbd { display: none; }
 
 .editing [draggable="true"] { cursor: grab; }
 .dragging { opacity: .4; }
-.drop-target { border-color: var(--accent); }
+.drop-target { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 .text-button {
   margin-left: auto;
@@ -228,16 +241,49 @@ button {
   align-items: center;
   gap: 10px;
   padding: 20px 10px 14px;
-  background: var(--glass);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
+  isolation: isolate;
+  background: var(--rim-tint);
+  backdrop-filter: blur(var(--rim-blur));
+  border: var(--rim) solid transparent;
   border-radius: var(--radius);
   color: inherit;
   text-decoration: none;
   min-width: 0;
-  transition: background-color var(--hover-transition), border-color var(--hover-transition);
 }
-.tile:hover { background: var(--glass-hover); }
+
+/* The blur switches instantly and the fades run on plain layers: animating backdrop-filter
+   makes Chromium redraw other blurred cards in vertical bands mid-transition. */
+.tile:hover,
+.preview-card:hover { backdrop-filter: blur(var(--rim-blur-hover)); }
+
+.tile::before,
+.preview-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: calc(var(--radius) - var(--rim));
+  background: var(--glass);
+  pointer-events: none;
+  transition: background-color var(--hover-transition);
+}
+.tile:hover::before,
+.preview-card:hover::before { background: var(--glass-hover); }
+
+.tile::after,
+.preview-card::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--rim));
+  z-index: -1;
+  border: var(--rim) solid var(--rim-tint-hover);
+  border-radius: var(--radius);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--hover-transition);
+}
+.tile:hover::after,
+.preview-card:hover::after { opacity: 1; }
 
 .tile-label {
   max-width: 100%;
@@ -322,21 +368,20 @@ button {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--glass);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
+  isolation: isolate;
+  background: var(--rim-tint);
+  backdrop-filter: blur(var(--rim-blur));
+  border: var(--rim) solid transparent;
   border-radius: var(--radius);
-  overflow: hidden;
   color: inherit;
   text-decoration: none;
   min-width: 0;
-  transition: background-color var(--hover-transition), border-color var(--hover-transition);
 }
-.preview-card:hover { background: var(--glass-hover); border-color: var(--muted); }
 
 .preview {
   position: relative;
   aspect-ratio: 16 / 10;
+  border-radius: calc(var(--radius) - var(--rim)) calc(var(--radius) - var(--rim)) 0 0;
   background: var(--surface-hover);
   overflow: hidden;
   border-bottom: 1px solid var(--border);
@@ -386,12 +431,12 @@ button {
   color: var(--muted);
   font-size: 13px;
 }
-.preview-note span { text-box: trim-both cap alphabetic; }
+.preview-note svg { width: 28px; height: 28px; opacity: .7; }
 
 .skeleton {
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, var(--surface-hover) 30%, var(--border) 50%, var(--surface-hover) 70%);
+  background: linear-gradient(100deg, var(--surface-hover) 30%, color-mix(in srgb, var(--text) 8%, var(--surface-hover)) 50%, var(--surface-hover) 70%);
   background-size: 300% 100%;
   animation: shimmer 1.4s linear infinite;
 }
@@ -417,6 +462,7 @@ button {
   white-space: nowrap;
 }
 [data-state="down"] .card-footer { color: var(--muted); }
+[data-state="down"] .preview { background: transparent; }
 
 .dot {
   flex: none;
@@ -427,12 +473,37 @@ button {
 }
 [data-state="up"] .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 25%, transparent); }
 
+:root { interpolate-size: allow-keywords; }
+
 .add-form {
   display: flex;
   gap: 8px;
+  height: auto;
   margin-top: 12px;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  transition:
+    opacity .25s ease,
+    translate .25s ease,
+    height .25s ease,
+    margin-top .25s ease,
+    display .25s allow-discrete;
 }
-.add-form[hidden] { display: none; }
+.add-form[hidden] {
+  display: none;
+  opacity: 0;
+  translate: 0 -8px;
+  height: 0;
+  margin-top: 0;
+}
+@starting-style {
+  .add-form:not([hidden]) {
+    opacity: 0;
+    translate: 0 -8px;
+    height: 0;
+    margin-top: 0;
+  }
+}
 
 .add-form input {
   flex: 1;
