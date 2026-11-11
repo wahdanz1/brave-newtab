@@ -310,16 +310,13 @@ button {
 .icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
   display: grid;
   place-items: center;
-  background: var(--surface-hover);
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--muted);
-  overflow: hidden;
 }
-.icon img { width: 28px; height: 28px; }
+.icon img { width: 32px; height: 32px; border-radius: 6px; }
 
 .remove {
   position: absolute;
