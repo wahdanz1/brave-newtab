@@ -3,6 +3,7 @@
   "name": "Index",
   "version": "1.0.0",
   "description": "Pinned sites, recent sites and local dev servers on every new tab.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1fv+OepQjg3pGN3l61CAUSw06tcyt52KD/XTkG2kVeqd8migTY2zWNV7Rw0wAF4MBSDc4ZazQd1IPz5mEjdMqGbbFdtFY2KActdnQK/Z+DAiALjL07u9aEi8GTEGUwsZwAcqS1wRVHf/RHsa5qICvm6X0nJpxapXkt7jZtYwPSMZptD6Yt+/5EZ0PZevPDsXt1QyBPwf2kXH+hWDbmSR1Pf3AoL5BUPxWL6myVDhu0pz6Mtnr+XfJgTGIuLinBoCjpXX/ZhPyucVTiewEdjv+2t8HxRxzqy7iEG7fcdpBiDDYBmi6CPPlm/hBRA6SbhDMsOCwWJuJdLpoS2SnmU7iwIDAQAB",
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
